@@ -34,7 +34,12 @@ jobs:
 
       - name: Prepare publish files
         run: |
-          TAG=${GITHUB_REF_NAME#v}
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="v$(grep -oP 'versionName\s*=\s*\"\K[^\"]+' app/build.gradle.kts | head -1)"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
           VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
           NOTES=$(gh api "repos/${{ github.repository }}/releases" --jq '.[0].body' 2>/dev/null || echo "Auto release")
           mkdir -p publish
@@ -54,6 +59,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
             publish/app-debug-v*.apk
             publish/version.json
@@ -63,5 +69,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add publish
-          git commit -m "publish ${GITHUB_REF_NAME}" || echo "nothing to commit"
+          git commit -m "publish ${{ env.TAG }}" || echo "nothing to commit"
           git push origin HEAD:main
