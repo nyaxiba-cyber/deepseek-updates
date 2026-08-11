@@ -1,4 +1,4 @@
-# 一键发布到蒲公英：本地构建 debug APK -> 复制到 publish/ -> 上传蒲公英
+﻿# 一键发布到蒲公英：本地构建 debug APK -> 复制到 publish/ -> 上传蒲公英
 # 前提：
 #   1) publish/pgyer_keys.json 已存在：{"api_key": "你的APIKey", "app_key": "可选"}
 #      （API Key 在 pgyer.com 后台「账户设置 -> API 信息」；App Key 在「应用管理 -> 安装设置」）
@@ -10,24 +10,32 @@ Set-Location $root
 $env:JAVA_HOME = "F:\Android\jdk-17.0.20+8"
 $env:GRADLE_USER_HOME = "F:\Android\.gradle"
 
+$keysFile = Join-Path $root "publish\pgyer_keys.json"
+$notesFile = Join-Path $root "publish\update_notes.txt"
+if (-not (Test-Path $keysFile)) {
+    Write-Error "缺少 $keysFile，请先创建（格式见 scripts\pgyer_keys.example.json）"
+    exit 1
+}
+$keys = Get-Content -Raw -Encoding UTF8 $keysFile | ConvertFrom-Json
+if (-not $keys.api_key) {
+    Write-Error "keys.json 里缺少 api_key"
+    exit 1
+}
+
 # 从 build.gradle.kts 读取版本
 $gradle = Get-Content -Raw -Encoding UTF8 "app\build.gradle.kts"
 $versionCode = [regex]::Match($gradle, 'versionCode\s*=\s*(\d+)').Groups[1].Value
 $versionName = [regex]::Match($gradle, 'versionName\s*=\s*"([^"]+)"').Groups[1].Value
 Write-Host "构建 v$versionName (versionCode $versionCode) ..."
 
-& .\gradlew.bat assembleDebug --no-daemon
+& .\gradlew.bat assembleDebug --no-daemon `
+    "-PPGYER_API_KEY=$($keys.api_key)" `
+    "-PPGYER_APP_KEY=$($keys.app_key)"
 if ($LASTEXITCODE -ne 0) { Write-Error "构建失败"; exit 1 }
 
 $apk = Join-Path $root "publish\app-debug-v$versionName.apk"
 Copy-Item (Join-Path $root "app\build\outputs\apk\debug\app-debug.apk") $apk -Force
 
-$notesFile = Join-Path $root "publish\update_notes.txt"
-$keysFile = Join-Path $root "publish\pgyer_keys.json"
-if (-not (Test-Path $keysFile)) {
-    Write-Error "缺少 $keysFile，请先创建（格式见脚本注释）"
-    exit 1
-}
 if (-not (Test-Path $notesFile)) {
     [System.IO.File]::WriteAllText(
         $notesFile,
