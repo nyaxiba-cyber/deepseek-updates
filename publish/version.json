@@ -1,7 +1,7 @@
 {
-    "updateNotes":  "v1.13 full update",
-    "versionCode":  14,
-    "versionName":  "1.13",
-    "downloadUrl":  "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-v1.13.apk",
-    "force":  false
+  "versionCode": 14,
+  "versionName": "v1.13",
+  "updateNotes": "Auto release",
+  "downloadUrl": "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-vv1.13.apk",
+  "force": false
 }
