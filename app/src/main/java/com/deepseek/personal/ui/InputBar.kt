@@ -369,8 +369,8 @@ fun MessageInputBar(
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
                         contentDescription = "发送",
-                        tint = if (text.isNotBlank()) Color.White
-                        else Color.White.copy(alpha = 0.5f)
+                        tint = if (text.isNotBlank()) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
                     )
                 }
             }

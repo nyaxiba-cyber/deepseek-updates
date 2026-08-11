@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
@@ -58,19 +59,35 @@ fun TypewriterText(
     fullText: String,
     streaming: Boolean,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onProgress: ((Int) -> Unit)? = null
 ) {
     var shown by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(fullText, streaming) {
         if (!streaming) {
-            shown = fullText.length
+            if (shown != fullText.length) {
+                shown = fullText.length
+                onProgress?.invoke(shown)
+            }
             return@LaunchedEffect
         }
+        // 帧驱动：每帧按节奏显示字符，与 AI 输出速度匹配且平滑不跳变
+        var lastFrame = 0L
         while (shown < fullText.length) {
-            val gap = fullText.length - shown
-            shown = if (gap > 80) fullText.length else minOf(shown + 2, fullText.length)
-            delay(28)
+            withFrameNanos { frameTime ->
+                if (lastFrame != 0L) {
+                    val gap = fullText.length - shown
+                    val step = when {
+                        gap > 60 -> 6
+                        gap > 20 -> 4
+                        else -> 2
+                    }
+                    shown = minOf(shown + step, fullText.length)
+                    onProgress?.invoke(shown)
+                }
+                lastFrame = frameTime
+            }
         }
     }
 

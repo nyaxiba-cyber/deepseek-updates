@@ -51,7 +51,10 @@ import androidx.compose.ui.unit.dp
 import com.deepseek.personal.data.ChatMessage
 
 @Composable
-fun MessageBubble(msg: ChatMessage) {
+fun MessageBubble(
+    msg: ChatMessage,
+    onProgress: ((Int) -> Unit)? = null
+) {
     val isUser = msg.role == "user"
     val isDark = isSystemInDarkTheme()
 
@@ -107,7 +110,8 @@ fun MessageBubble(msg: ChatMessage) {
                         BoxContent(
                             msg = msg,
                             textColor = textColor,
-                            isDark = isDark
+                            isDark = isDark,
+                            onProgress = onProgress
                         )
                     }
                 }
@@ -171,7 +175,8 @@ private fun MessageActions(msg: ChatMessage) {
 private fun BoxContent(
     msg: ChatMessage,
     textColor: Color,
-    isDark: Boolean
+    isDark: Boolean,
+    onProgress: ((Int) -> Unit)? = null
 ) {
     Column(
         Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -182,7 +187,8 @@ private fun BoxContent(
                     TypewriterText(
                         fullText = msg.content,
                         streaming = true,
-                        color = textColor
+                        color = textColor,
+                        onProgress = onProgress
                     )
                 } else {
                     MarkdownText(

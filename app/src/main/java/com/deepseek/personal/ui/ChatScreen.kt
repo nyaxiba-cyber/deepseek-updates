@@ -46,6 +46,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -300,6 +301,7 @@ private fun MessageList(
 ) {
     val listState = rememberLazyListState()
     var autoFollow by remember { mutableStateOf(true) }
+    var lastStreamProgress by remember { mutableIntStateOf(0) }
     val lastId = messages.lastOrNull()?.id
     val lastLen = messages.lastOrNull()?.content?.length
 
@@ -341,7 +343,11 @@ private fun MessageList(
             key = { it.id },
             contentType = { it.role }
         ) { msg ->
-            MessageBubble(msg)
+            val isLastStreaming = msg.streaming && msg.id == messages.lastOrNull()?.id
+            MessageBubble(
+                msg = msg,
+                onProgress = if (isLastStreaming) { p -> lastStreamProgress = p } else null
+            )
         }
     }
 
@@ -352,8 +358,8 @@ private fun MessageList(
         }
     }
 
-    // 流式增量跟手滚动：瞬移到末尾，避免动画叠加导致的抽搐
-    LaunchedEffect(lastLen, isStreaming) {
+    // 打字机进度驱动滚动：窗口跟随"已显示的字"平滑下移，不跳变
+    LaunchedEffect(lastStreamProgress, isStreaming) {
         if (autoFollow && isStreaming && messages.isNotEmpty()) {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()
@@ -413,7 +419,7 @@ private fun EmptyChat(
         ) {
             Text(
                 "D",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold
             )

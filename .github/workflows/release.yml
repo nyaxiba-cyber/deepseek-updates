@@ -49,8 +49,13 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
-          NOTES="${{ github.event.inputs.notes }}"
-          if [[ -z "$NOTES" ]]; then NOTES="Auto release"; fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            NOTES="${{ github.event.inputs.notes }}"
+            if [[ -z "$NOTES" ]]; then NOTES="Auto release"; fi
+          else
+            NOTES=$(git tag -l --format='%(contents)' "$TAG")
+            if [[ -z "$NOTES" ]]; then NOTES="Auto release"; fi
+          fi
           mkdir -p publish
           cp app/build/outputs/apk/debug/app-debug.apk "publish/app-debug-v${VERSION}.apk"
           cat > publish/version.json <<EOF

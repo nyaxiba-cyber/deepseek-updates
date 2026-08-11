@@ -76,7 +76,7 @@ fun Sidebar(
             ) {
                 Text(
                     "D",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = MaterialTheme.typography.titleMedium.fontSize
                 )
