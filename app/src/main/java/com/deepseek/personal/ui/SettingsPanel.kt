@@ -1,5 +1,7 @@
 package com.deepseek.personal.ui
 
+import android.content.Context
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -442,6 +444,11 @@ private fun DevicePage(vm: AppViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val info = remember { DeviceProfile.detect(context) }
     val highRefresh by vm.highRefresh.collectAsState()
+    val currentRate = remember {
+        @Suppress("DEPRECATION")
+        (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
+            ?.defaultDisplay?.refreshRate ?: 60f
+    }
 
     Column(Modifier.fillMaxSize()) {
         PageHeader("设备与性能", onBack)
@@ -477,6 +484,7 @@ private fun DevicePage(vm: AppViewModel, onBack: () -> Unit) {
             InfoRow("处理器", info.soc)
             InfoRow("内存", "${info.ramGB} GB")
             InfoRow("最高刷新率", DeviceProfile.formatRefresh(info.maxRefreshRate))
+            InfoRow("当前实际刷新率", DeviceProfile.formatRefresh(currentRate))
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(Modifier.height(8.dp))
@@ -484,8 +492,10 @@ private fun DevicePage(vm: AppViewModel, onBack: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text("高刷新率渲染", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        if (info.maxRefreshRate >= 90f)
-                            "已识别 ${DeviceProfile.formatRefresh(info.maxRefreshRate)}，动画按高帧率运行"
+                        if (info.maxRefreshRate >= 90f && currentRate >= info.maxRefreshRate - 1f)
+                            "已生效：当前 ${DeviceProfile.formatRefresh(currentRate)}"
+                        else if (info.maxRefreshRate >= 90f)
+                            "开关已打开，但系统当前仍为 ${DeviceProfile.formatRefresh(currentRate)}"
                         else "当前设备最高 ${DeviceProfile.formatRefresh(info.maxRefreshRate)}，无需额外设置",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -498,6 +508,14 @@ private fun DevicePage(vm: AppViewModel, onBack: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(12.dp))
+            if (info.maxRefreshRate >= 90f && currentRate < info.maxRefreshRate - 1f) {
+                Text(
+                    "系统未放行高刷新率：请到手机「设置 → 显示与亮度 → 屏幕刷新率」把本应用设为最高刷新率（iQOO 还可到「设置 → 显示与亮度 → 高刷新率应用」加入本应用），返回后重开本页确认。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
             Text(
                 "App 会自动识别手机性能：旗舰/高刷设备启用最高刷新率渲染，让对话流式动画更流畅；标准设备保持系统默认以省电。",
                 style = MaterialTheme.typography.labelSmall,

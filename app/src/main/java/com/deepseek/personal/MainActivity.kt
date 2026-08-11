@@ -1,8 +1,12 @@
 package com.deepseek.personal
 
+import android.content.Context
 import android.os.Bundle
 import android.os.Build
+import android.view.WindowManager
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,11 +29,14 @@ class MainActivity : ComponentActivity() {
                 AppRoot(vm)
             }
         }
-        // 根据设置自适应高刷新率
+        // 根据设置自适应高刷新率（onCreate 时窗口未挂载 display 为 null，
+        // 必须等 RESUMED 再应用，否则高刷永远不会生效）
         val settings = SettingsStore(applicationContext)
         lifecycleScope.launch {
-            settings.highRefresh.collect { enable ->
-                enableHighRefreshRate(enable)
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                settings.highRefresh.collect { enable ->
+                    enableHighRefreshRate(enable)
+                }
             }
         }
     }
@@ -39,7 +46,11 @@ class MainActivity : ComponentActivity() {
      * 关闭时恢复系统默认，让 Compose 动画与流式渲染更流畅。
      */
     private fun enableHighRefreshRate(enabled: Boolean) {
-        val display = display ?: return
+        val display = display ?: run {
+            @Suppress("DEPRECATION")
+            (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
+                ?.defaultDisplay
+        } ?: return
         val bestMode = display.supportedModes.maxByOrNull { it.refreshRate } ?: return
         if (!enabled || bestMode.refreshRate < 90f) {
             val lp = window.attributes

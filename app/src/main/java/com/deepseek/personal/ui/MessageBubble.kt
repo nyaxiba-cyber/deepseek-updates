@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -156,21 +155,21 @@ private fun BoxContent(
         Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         if (msg.content.isNotBlank()) {
-            SelectionContainer {
-                if (msg.streaming) {
-                    TypewriterText(
-                        fullText = msg.content,
-                        streaming = true,
-                        color = textColor,
-                        onProgress = onProgress
-                    )
-                } else {
-                    MarkdownText(
-                        text = msg.content,
-                        color = textColor,
-                        isDark = isDark
-                    )
-                }
+            // 不做 SelectionContainer：它会在滚动时为每条消息维护选区状态，非常吃性能。
+            // 复制走每条消息右上角「⋮」菜单里的「复制」。
+            if (msg.streaming) {
+                TypewriterText(
+                    fullText = msg.content,
+                    streaming = true,
+                    color = textColor,
+                    onProgress = onProgress
+                )
+            } else {
+                MarkdownText(
+                    text = msg.content,
+                    color = textColor,
+                    isDark = isDark
+                )
             }
         }
         if (msg.error != null) {

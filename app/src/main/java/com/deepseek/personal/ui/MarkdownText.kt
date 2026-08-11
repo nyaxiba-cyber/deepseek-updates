@@ -40,6 +40,18 @@ fun MarkdownText(
         )
         return
     }
+    // 纯文本快速通道：绝大多数对话是普通文本，直接走 Text 渲染，
+    // 避免滚动进入视口时每条消息都做一遍 Markdown 解析（卡顿主因之一）。
+    val usePlain = remember(text) { !containsMarkdown(text) }
+    if (usePlain) {
+        androidx.compose.material3.Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            modifier = modifier
+        )
+        return
+    }
     CompositionLocalProvider(LocalContentColor provides color) {
         BasicRichText(
             modifier = modifier,
@@ -48,6 +60,25 @@ fun MarkdownText(
             Markdown(text)
         }
     }
+}
+
+/** 粗判文本是否包含 Markdown 语法（命中才走富文本解析）。 */
+private fun containsMarkdown(text: String): Boolean {
+    if (text.length < 2) return false
+    if (text.contains("```")) return true
+    val lines = text.lines()
+    for (line in lines) {
+        val t = line.trimStart()
+        if (t.startsWith("#") && (t.length == 1 || t[1] == ' ')) return true
+        if (t.startsWith("> ") || t.startsWith("- ") || t.startsWith("* ") || t.startsWith("+ ")) {
+            return true
+        }
+        if (Regex("^\\d+\\.\\s+").containsMatchIn(t)) return true
+    }
+    if (text.contains("**") || text.contains('`')) return true
+    if (text.contains("|") && text.contains("---")) return true
+    if (text.contains("[") && text.contains("](")) return true
+    return false
 }
 
 /**
