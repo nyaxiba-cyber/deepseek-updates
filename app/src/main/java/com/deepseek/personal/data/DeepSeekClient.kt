@@ -16,6 +16,15 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 /**
+ * 流式调用结果：区分正常完成、可重试的中断、失败。
+ */
+sealed class StreamResult {
+    object Done : StreamResult()
+    data class Interrupted(val reason: String = "连接中断") : StreamResult()
+    data class Failed(val message: String) : StreamResult()
+}
+
+/**
  * DeepSeek 官方 API 流式客户端（chat/completions + SSE）
  */
 class DeepSeekClient {
@@ -43,7 +52,7 @@ class DeepSeekClient {
         req: ChatRequest,
         onReasoning: (String) -> Unit,
         onContent: (String) -> Unit
-    ): String? = suspendCancellableCoroutine { cont ->
+    ): StreamResult = suspendCancellableCoroutine { cont ->
         val httpReq = Request.Builder()
             .url("https://api.deepseek.com/chat/completions")
             .addHeader("Authorization", "Bearer ${req.apiKey}")
@@ -53,6 +62,7 @@ class DeepSeekClient {
 
         val factory = EventSources.createFactory(client)
         val resumed = java.util.concurrent.atomic.AtomicBoolean(false)
+        var completed = false
         val es = factory.newEventSource(httpReq, object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -62,6 +72,7 @@ class DeepSeekClient {
             ) {
                 if (cont.isCancelled) return
                 if (data == "[DONE]") {
+                    completed = true
                     eventSource.cancel()
                     return
                 }
@@ -80,7 +91,10 @@ class DeepSeekClient {
 
             override fun onClosed(eventSource: EventSource) {
                 if (!cont.isCancelled && resumed.compareAndSet(false, true)) {
-                    cont.resume(null)
+                    cont.resume(
+                        if (completed) StreamResult.Done
+                        else StreamResult.Interrupted()
+                    )
                 }
             }
 
@@ -96,7 +110,7 @@ class DeepSeekClient {
                 } else {
                     "网络错误：${t?.message ?: "连接失败"}"
                 }
-                if (resumed.compareAndSet(false, true)) cont.resume(err)
+                if (resumed.compareAndSet(false, true)) cont.resume(StreamResult.Failed(err))
             }
         })
         cont.invokeOnCancellation { es.cancel() }
@@ -114,7 +128,7 @@ class DeepSeekClient {
         onReasoning: (String) -> Unit,
         onContent: (String) -> Unit,
         onSearchStatus: (String) -> Unit
-    ): String? = suspendCancellableCoroutine { cont ->
+    ): StreamResult = suspendCancellableCoroutine { cont ->
         val arr = JSONArray()
         for ((role, content) in messages) {
             if (content.isBlank()) continue
@@ -141,6 +155,7 @@ class DeepSeekClient {
 
         val factory = EventSources.createFactory(client)
         val resumed = java.util.concurrent.atomic.AtomicBoolean(false)
+        var completed = false
         val es = factory.newEventSource(httpReq, object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -163,12 +178,15 @@ class DeepSeekClient {
                         "response.web_search_call.searching" -> onSearchStatus("正在联网搜索…")
                         "response.web_search_call.completed" -> onSearchStatus("")
                         "response.completed" -> {
+                            completed = true
                             eventSource.cancel()
                         }
                         "response.failed" -> {
                             val err = json.optJSONObject("error")
                                 ?.optString("message") ?: "生成失败"
-                            if (resumed.compareAndSet(false, true)) cont.resume(err)
+                            if (resumed.compareAndSet(false, true)) {
+                                cont.resume(StreamResult.Failed(err))
+                            }
                             eventSource.cancel()
                         }
                     }
@@ -178,7 +196,10 @@ class DeepSeekClient {
 
             override fun onClosed(eventSource: EventSource) {
                 if (!cont.isCancelled && resumed.compareAndSet(false, true)) {
-                    cont.resume(null)
+                    cont.resume(
+                        if (completed) StreamResult.Done
+                        else StreamResult.Interrupted()
+                    )
                 }
             }
 
@@ -194,7 +215,7 @@ class DeepSeekClient {
                 } else {
                     "网络错误：${t?.message ?: "连接失败"}"
                 }
-                if (resumed.compareAndSet(false, true)) cont.resume(err)
+                if (resumed.compareAndSet(false, true)) cont.resume(StreamResult.Failed(err))
             }
         })
         cont.invokeOnCancellation { es.cancel() }

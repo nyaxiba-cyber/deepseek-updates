@@ -12,17 +12,12 @@ android {
         applicationId = "com.deepseek.personal"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "1.20"
+        versionCode = 22
+        versionName = "1.21"
 
         // API Key 不内置进 APK：首次打开后由用户在设置页填写，
         // 保存在 App 本地配置文件（DataStore），更新安装时不会被删除。
         // 更新清单：GitHub raw（实时无缓存）；APK 下载走 jsDelivr CDN（国内加速）
-        // 更新清单：腾讯云 COS（国内直连、自带 HTTPS，无需备案/梯子）
-        val updateUrl = (project.findProperty("UPDATE_URL") as String?)
-            ?: "https://deepseek-update-1320021760.cos.ap-chengdu.myqcloud.com/version.json"
-        buildConfigField("String", "UPDATE_URL_DEFAULT", "\"$updateUrl\"")
-
         // 蒲公英检查更新：注册 pgyer.com 后在「账户设置 -> API 信息」拿 API Key，
         // 应用 Key 在「应用管理 -> 应用 -> 安装设置」拿
         val pgyerApiKey = (project.findProperty("PGYER_API_KEY") as String?) ?: ""

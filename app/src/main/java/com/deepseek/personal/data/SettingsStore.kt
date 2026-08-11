@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.deepseek.personal.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -34,10 +33,6 @@ class SettingsStore(private val context: Context) {
 
     val autoMemory: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_AUTO_MEMORY] ?: true
-    }
-
-    val updateUrl: Flow<String> = context.dataStore.data.map {
-        it[KEY_UPDATE_URL] ?: BuildConfig.UPDATE_URL_DEFAULT
     }
 
     val themeKey: Flow<String> = context.dataStore.data.map {
@@ -80,10 +75,6 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[KEY_AUTO_MEMORY] = value }
     }
 
-    suspend fun setUpdateUrl(value: String) {
-        context.dataStore.edit { it[KEY_UPDATE_URL] = value }
-    }
-
     suspend fun setThemeKey(value: String) {
         context.dataStore.edit { it[KEY_THEME] = value }
     }
@@ -110,7 +101,6 @@ class SettingsStore(private val context: Context) {
         private val KEY_THINKING = booleanPreferencesKey("thinking")
         private val KEY_EFFORT = stringPreferencesKey("reasoning_effort")
         private val KEY_AUTO_MEMORY = booleanPreferencesKey("auto_memory")
-        private val KEY_UPDATE_URL = stringPreferencesKey("update_url")
         private val KEY_THEME = stringPreferencesKey("theme")
         private val KEY_WEB_SEARCH = booleanPreferencesKey("web_search")
         private val KEY_VIBRATE = booleanPreferencesKey("vibrate_on_output")

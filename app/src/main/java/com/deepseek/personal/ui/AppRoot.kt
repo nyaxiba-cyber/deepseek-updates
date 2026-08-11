@@ -67,6 +67,8 @@ private fun AppRootInner(vm: AppViewModel) {
     val memoryNotice by vm.memoryNotice.collectAsState()
     val webSearch by vm.webSearch.collectAsState()
     val webSearchStatus by vm.webSearchStatus.collectAsState()
+    val retryNotice by vm.retryNotice.collectAsState()
+    val visibleCount by vm.visibleCount.collectAsState()
     val trashPending by vm.trashPending.collectAsState()
     val trash by vm.trash.collectAsState()
 
@@ -113,6 +115,8 @@ private fun AppRootInner(vm: AppViewModel) {
                 apiKeyBlank = apiKey.isBlank(),
                 memoryNotice = memoryNotice,
                 webSearchStatus = webSearchStatus,
+                retryNotice = retryNotice,
+                visibleCount = visibleCount,
                 showMenu = !wide,
                 onMenuClick = { sidebarVisible = true },
                 modifier = Modifier.weight(1f)

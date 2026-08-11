@@ -90,6 +90,8 @@ import com.deepseek.personal.ui.theme.AppTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
+private const val BackSwipeThresholdRatio = 0.28f
+
 private enum class SettingsPage {
     HOME, API_KEY, MODEL, THEME, INTERACTION, UPDATE, MODEL_DETAIL, DEVICE
 }
@@ -240,7 +242,7 @@ private fun SettingsNavigator(
                                     },
                                     onDragEnd = {
                                         scope.launch {
-                                            if (currentDrag > maxDrag * 0.28f) {
+                                            if (currentDrag > maxDrag * BackSwipeThresholdRatio) {
                                                 animate(
                                                     currentDrag,
                                                     maxDrag,

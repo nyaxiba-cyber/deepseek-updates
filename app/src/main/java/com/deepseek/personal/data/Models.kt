@@ -30,8 +30,8 @@ object ModelInfo {
     const val PRO = "deepseek-v4-pro"
 
     val all = listOf(
-        ModelOption(FLASH, "DeepSeek V4 Flash", "快速 · 便宜", "$0.14 / 百万输入"),
-        ModelOption(PRO, "DeepSeek V4 Pro", "最强 · 慢一些", "$0.435 / 百万输入")
+        ModelOption(FLASH, "DeepSeek V4 Flash", "快速 · 便宜", "$0.14 输入 · $0.29 输出 / 百万 Token"),
+        ModelOption(PRO, "DeepSeek V4 Pro", "最强 · 慢一些", "$0.44 输入 · $0.87 输出 / 百万 Token")
     )
 }
 

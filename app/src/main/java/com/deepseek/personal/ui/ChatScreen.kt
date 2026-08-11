@@ -68,6 +68,13 @@ import com.deepseek.personal.data.ChatMessage
 import com.deepseek.personal.data.ModelInfo
 import kotlinx.coroutines.launch
 
+// 手势阈值常量（统一调手感）
+private val EdgeSwipeDp = 30.dp
+private const val EdgeSwipeMinDx = 120f
+private const val TopPullMinDy = 120f
+private const val BottomPullMinDy = 150f
+private const val BottomAreaRatio = 0.72f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
@@ -81,6 +88,8 @@ fun ChatScreen(
     apiKeyBlank: Boolean,
     memoryNotice: String?,
     webSearchStatus: String?,
+    retryNotice: String?,
+    visibleCount: Int,
     showMenu: Boolean,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -89,7 +98,7 @@ fun ChatScreen(
     var moreMenu by remember { mutableStateOf(false) }
     var renameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
-    val edgePx = with(LocalDensity.current) { 30.dp.toPx() }
+    val edgePx = with(LocalDensity.current) { EdgeSwipeDp.toPx() }
 
     Column(
         modifier
@@ -105,8 +114,8 @@ fun ChatScreen(
                         dx += event.changes.firstOrNull()?.positionChange()?.x ?: 0f
                     } while (event.changes.any { it.pressed })
                     when {
-                        dx > 120f && startX < edgePx -> onMenuClick()
-                        dx < -120f && startX > size.width - edgePx ->
+                        dx > EdgeSwipeMinDx && startX < edgePx -> onMenuClick()
+                        dx < -EdgeSwipeMinDx && startX > size.width - edgePx ->
                             vm.goToPreviousConversation()
                     }
                 }
@@ -191,6 +200,9 @@ fun ChatScreen(
                 messages = messages,
                 isStreaming = isStreaming,
                 onNewConversation = { vm.newConversation() },
+                visibleCount = visibleCount,
+                onLoadMoreOlder = { vm.loadMoreOlder() },
+                onDeleteMessage = { vm.deleteMessage(it) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -246,6 +258,26 @@ fun ChatScreen(
                 )
             }
         }
+
+        AnimatedVisibility(
+            visible = retryNotice != null,
+            enter = fadeIn(tween(250)) + slideInVertically(tween(250)) { it },
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                modifier = Modifier.padding(vertical = 6.dp)
+            ) {
+                Text(
+                    retryNotice.orEmpty(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
     }
 
     if (renameDialog) {
@@ -282,6 +314,9 @@ private fun MessageList(
     messages: List<ChatMessage>,
     isStreaming: Boolean,
     onNewConversation: () -> Unit,
+    visibleCount: Int,
+    onLoadMoreOlder: () -> Unit,
+    onDeleteMessage: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -289,7 +324,11 @@ private fun MessageList(
     var userScrolling by remember { mutableStateOf(false) }
     var lastStreamProgress by remember { mutableIntStateOf(0) }
     val lastId = messages.lastOrNull()?.id
-    val lastLen = messages.lastOrNull()?.content?.length
+    val visibleMessages = if (visibleCount >= messages.size) {
+        messages
+    } else {
+        messages.takeLast(visibleCount)
+    }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
 
@@ -324,15 +363,15 @@ private fun MessageList(
                     userScrolling = false
                     val atTop = !listState.canScrollBackward
                     val atBottom = !listState.canScrollForward
-                    val startInBottomArea = startY > size.height * 0.72f
+                    val startInBottomArea = startY > size.height * BottomAreaRatio
                     when {
                         // 消息列表底部下拉（手势从屏幕下方区域开始）：新建对话
-                        atBottom && startInBottomArea && dy > 150f -> {
+                        atBottom && startInBottomArea && dy > BottomPullMinDy -> {
                             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                             onNewConversation()
                         }
                         // 消息列表顶部下拉（已上翻历史时）：平滑滚回最新消息（Telegram 式跳转）
-                        atTop && !atBottom && dy > 120f -> {
+                        atTop && !atBottom && dy > TopPullMinDy -> {
                             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                             autoFollow = true
                             val lastIndex = listState.layoutInfo.totalItemsCount - 1
@@ -349,32 +388,44 @@ private fun MessageList(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         items(
-            messages,
+            visibleMessages,
             key = { it.id },
             contentType = { it.role }
         ) { msg ->
             val isLastStreaming = msg.streaming && msg.id == messages.lastOrNull()?.id
             MessageBubble(
                 msg = msg,
-                onProgress = if (isLastStreaming) { p -> lastStreamProgress = p } else null
+                onProgress = if (isLastStreaming) { p -> lastStreamProgress = p } else null,
+                onDelete = { onDeleteMessage(msg.id) }
             )
+        }
+    }
+
+    // 长对话分页：滚到顶部且还有更早消息时，加载上一批
+    LaunchedEffect(listState, visibleCount, messages.size) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex == 0 &&
+                !listState.canScrollBackward &&
+                visibleCount < messages.size
+        }.collect { needMore ->
+            if (needMore) onLoadMoreOlder()
         }
     }
 
     // 平滑跟随流式输出
     LaunchedEffect(lastId) {
-        if (autoFollow && messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.lastIndex)
+        if (autoFollow && visibleMessages.isNotEmpty()) {
+            listState.animateScrollToItem(visibleMessages.lastIndex)
         }
     }
 
     // 打字机进度驱动滚动：窗口跟随"已显示的字"平滑下移，不跳变
     LaunchedEffect(lastStreamProgress, isStreaming) {
-        if (autoFollow && isStreaming && messages.isNotEmpty()) {
+        if (autoFollow && isStreaming && visibleMessages.isNotEmpty()) {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()
-            if (lastVisible == null || lastVisible.index < messages.lastIndex) {
-                listState.scrollToItem(messages.lastIndex)
+            if (lastVisible == null || lastVisible.index < visibleMessages.lastIndex) {
+                listState.scrollToItem(visibleMessages.lastIndex)
             }
         }
     }

@@ -1,7 +1,7 @@
 {
-  "versionCode": 16,
-  "versionName": "1.15",
-  "updateNotes": "v1.15：删除会话不再弹窗，改为右上角轻量提示；新增四向手势（顶部下拉回到最新、底部下拉新建对话、边缘横滑切换会话/侧栏）",
-  "downloadUrl": "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-v1.15.apk",
+  "versionCode": 17,
+  "versionName": "1.16",
+  "updateNotes": "v1.16：更新源切换到腾讯云 COS，国内直连、无需梯子，以后更新更稳",
+  "downloadUrl": "https://deepseek-update-1320021760.cos.ap-chengdu.myqcloud.com/app-debug-v1.16.apk",
   "force": false
 }

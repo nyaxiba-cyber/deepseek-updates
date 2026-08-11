@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,10 +24,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +46,7 @@ fun MemorySheet(
     val memories by vm.memories.collectAsState()
     val autoMemory by vm.autoMemory.collectAsState()
     var newText by rememberSaveable { mutableStateOf("") }
+    var confirmClear by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -52,11 +56,25 @@ fun MemorySheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
-            Text(
-                "记忆",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "记忆",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                if (memories.isNotEmpty()) {
+                    TextButton(onClick = { confirmClear = true }) {
+                        Text(
+                            "清空全部",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 "AI 会记住这些信息，在后续对话中自动运用",
@@ -159,5 +177,24 @@ fun MemorySheet(
             }
             Spacer(Modifier.height(12.dp))
         }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清空全部记忆？") },
+            text = { Text("所有记忆将永久删除，AI 将不再记得这些信息。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.clearMemories()
+                    confirmClear = false
+                }) {
+                    Text("清空", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) { Text("取消") }
+            }
+        )
     }
 }

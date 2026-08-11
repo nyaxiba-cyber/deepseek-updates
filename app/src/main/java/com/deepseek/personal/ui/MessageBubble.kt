@@ -2,7 +2,10 @@ package com.deepseek.personal.ui
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,13 +44,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.deepseek.personal.data.ChatMessage
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
     msg: ChatMessage,
-    onProgress: ((Int) -> Unit)? = null
+    onProgress: ((Int) -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     val isUser = msg.role == "user"
     val isDark = isSystemInDarkTheme()
+    val clipboard = LocalClipboardManager.current
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -55,7 +61,7 @@ fun MessageBubble(
         verticalAlignment = Alignment.Bottom
     ) {
         if (!isUser) {
-            MessageActions(msg)
+            MessageActions(msg, onDelete)
             Spacer(Modifier.padding(end = 2.dp))
         }
         Column(
@@ -80,7 +86,15 @@ fun MessageBubble(
                     bottomStart = if (isUser) 18.dp else 4.dp,
                     bottomEnd = if (isUser) 4.dp else 18.dp
                 ),
-                color = bubbleColor
+                color = bubbleColor,
+                modifier = Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        clipboard.setText(AnnotatedString(msg.content))
+                    },
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                )
             ) {
                 BoxContent(
                     msg = msg,
@@ -92,13 +106,16 @@ fun MessageBubble(
         }
         if (isUser) {
             Spacer(Modifier.padding(start = 2.dp))
-            MessageActions(msg)
+            MessageActions(msg, onDelete)
         }
     }
 }
 
 @Composable
-private fun MessageActions(msg: ChatMessage) {
+private fun MessageActions(
+    msg: ChatMessage,
+    onDelete: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var menu by remember { mutableStateOf(false) }
@@ -140,6 +157,15 @@ private fun MessageActions(msg: ChatMessage) {
                     menu = false
                 }
             )
+            if (onDelete != null && !msg.streaming) {
+                DropdownMenuItem(
+                    text = { Text("删除此条") },
+                    onClick = {
+                        onDelete()
+                        menu = false
+                    }
+                )
+            }
         }
     }
 }

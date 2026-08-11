@@ -105,6 +105,7 @@ fun TypewriterText(
         }
         // 帧驱动：每帧按节奏显示字符，与 AI 输出速度匹配且平滑不跳变
         var lastFrame = 0L
+        var frameCount = 0
         while (shown < fullText.length) {
             withFrameNanos { frameTime ->
                 if (lastFrame != 0L) {
@@ -115,7 +116,9 @@ fun TypewriterText(
                         else -> 2
                     }
                     shown = minOf(shown + step, fullText.length)
-                    onProgress?.invoke(shown)
+                    // 回调节流：每 2 帧上报一次，减少滚动逻辑的重复计算
+                    frameCount++
+                    if (frameCount % 2 == 0) onProgress?.invoke(shown)
                 }
                 lastFrame = frameTime
             }

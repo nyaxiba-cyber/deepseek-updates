@@ -209,6 +209,10 @@ class HistoryStore(context: Context) {
         db.writableDatabase.delete("memories", "id = ?", arrayOf(id.toString()))
     }
 
+    fun deleteAllMemories() {
+        db.writableDatabase.delete("memories", null, null)
+    }
+
     private class DbHelper(context: Context) : SQLiteOpenHelper(context, "deepseek.db", null, 3) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(

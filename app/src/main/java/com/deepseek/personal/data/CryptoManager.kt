@@ -52,7 +52,7 @@ object CryptoManager {
     fun decrypt(stored: String): String {
         if (!stored.startsWith(PREFIX)) return stored // 旧明文数据，直接迁移
         val parts = stored.removePrefix(PREFIX).split(":")
-        if (parts.size != 2) return stored
+        if (parts.size != 2) return ""
         return try {
             val iv = Base64.decode(parts[0], Base64.NO_WRAP)
             val enc = Base64.decode(parts[1], Base64.NO_WRAP)
@@ -60,7 +60,7 @@ object CryptoManager {
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
             String(cipher.doFinal(enc), Charsets.UTF_8)
         } catch (_: Exception) {
-            stored
+            "" // 解密失败（密钥丢失/数据损坏）：返回空，提示重新填写
         }
     }
 }

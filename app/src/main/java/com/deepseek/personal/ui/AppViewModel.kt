@@ -22,12 +22,14 @@ import com.deepseek.personal.data.Memory
 import com.deepseek.personal.data.ModelInfo
 import com.deepseek.personal.data.PgyerUpdater
 import com.deepseek.personal.data.SettingsStore
+import com.deepseek.personal.data.StreamResult
 import com.deepseek.personal.data.UpdateInfo
 import com.deepseek.personal.data.UpdateManager
 import com.deepseek.personal.ui.theme.AppTheme
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +53,8 @@ class AppViewModel(
 
     companion object {
         const val TRASH_TTL = 5 * 60 * 1000L
+        const val DEFAULT_VISIBLE = 120
+        const val VISIBLE_PAGE_SIZE = 120
     }
 
     private val history = HistoryStore(app)
@@ -94,8 +98,11 @@ class AppViewModel(
     private val _memoryNotice = MutableStateFlow<String?>(null)
     val memoryNotice: StateFlow<String?> = _memoryNotice
 
-    private val _updateUrl = MutableStateFlow("")
-    val updateUrl: StateFlow<String> = _updateUrl
+    private val _retryNotice = MutableStateFlow<String?>(null)
+    val retryNotice: StateFlow<String?> = _retryNotice
+
+    private val _visibleCount = MutableStateFlow(DEFAULT_VISIBLE)
+    val visibleCount: StateFlow<Int> = _visibleCount
 
     private val _theme = MutableStateFlow(AppTheme.DEEPSEEK)
     val theme: StateFlow<AppTheme> = _theme
@@ -152,7 +159,6 @@ class AppViewModel(
         viewModelScope.launch { settings.thinking.collect { _thinking.value = it } }
         viewModelScope.launch { settings.reasoningEffort.collect { _reasoningEffort.value = it } }
         viewModelScope.launch { settings.autoMemory.collect { _autoMemory.value = it } }
-        viewModelScope.launch { settings.updateUrl.collect { _updateUrl.value = it } }
         viewModelScope.launch {
             settings.themeKey.collect { _theme.value = AppTheme.fromKey(it) }
         }
@@ -197,6 +203,7 @@ class AppViewModel(
 
     fun newConversation() {
         if (_isStreaming.value) return
+        _visibleCount.value = DEFAULT_VISIBLE
         viewModelScope.launch(Dispatchers.IO) {
             val id = history.createConversation("新对话", _model.value, _thinking.value)
             _conversations.value = history.listConversations()
@@ -207,6 +214,7 @@ class AppViewModel(
 
     fun selectConversation(id: Long) {
         if (_isStreaming.value) stopStreaming()
+        _visibleCount.value = DEFAULT_VISIBLE
         _currentConvId.value = id
         viewModelScope.launch(Dispatchers.IO) {
             _messages.value = history.loadMessages(id)
@@ -241,11 +249,13 @@ class AppViewModel(
             if (_currentConvId.value == id) {
                 _currentConvId.value = null
                 _messages.value = emptyList()
+                _visibleCount.value = DEFAULT_VISIBLE
             }
         }
     }
 
     fun restoreConversation(id: Long) {
+        _visibleCount.value = DEFAULT_VISIBLE
         viewModelScope.launch(Dispatchers.IO) {
             history.restoreConversation(id)
             _conversations.value = history.listConversations()
@@ -278,6 +288,31 @@ class AppViewModel(
         }
     }
 
+    /** 删除单条消息（同步从对话上下文移除）。 */
+    fun deleteMessage(id: Long) {
+        if (_isStreaming.value) return
+        val convId = _currentConvId.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            history.deleteMessage(id)
+            history.touchConversation(convId)
+            _messages.update { list -> list.filterNot { it.id == id } }
+            _conversations.value = history.listConversations()
+        }
+    }
+
+    fun clearMemories() {
+        viewModelScope.launch(Dispatchers.IO) {
+            history.deleteAllMemories()
+            _memories.value = history.listMemories()
+        }
+    }
+
+    /** 长对话分页：向上滚动到顶部时加载更早的消息。 */
+    fun loadMoreOlder() {
+        val more = min(_visibleCount.value + VISIBLE_PAGE_SIZE, _messages.value.size)
+        if (more != _visibleCount.value) _visibleCount.value = more
+    }
+
     fun renameConversation(id: Long, title: String) {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return
@@ -290,6 +325,7 @@ class AppViewModel(
     fun clearAll() {
         streamJob?.cancel()
         _isStreaming.value = false
+        _visibleCount.value = DEFAULT_VISIBLE
         viewModelScope.launch(Dispatchers.IO) {
             // 全部移入回收站（软删除），5 分钟后彻底清理
             _conversations.value.forEach { history.deleteConversation(it.id) }
@@ -319,10 +355,6 @@ class AppViewModel(
 
     fun updateAutoMemory(enabled: Boolean) {
         viewModelScope.launch { settings.setAutoMemory(enabled) }
-    }
-
-    fun setUpdateUrl(url: String) {
-        viewModelScope.launch { settings.setUpdateUrl(url) }
     }
 
     fun setTheme(theme: AppTheme) {
@@ -418,39 +450,82 @@ class AppViewModel(
                 val historyMessages = _messages.value
                     .filter { !it.streaming && it.error == null }
                     .map { it.role to it.content }
-                val error = if (_webSearch.value) {
-                    _webSearchStatus.value = "正在联网搜索…"
-                    val err = withContext(Dispatchers.IO) {
-                        client.streamResponses(
-                            apiKey = _apiKey.value,
-                            instructions = systemPrompt,
-                            messages = historyMessages,
-                            webSearch = true,
-                            onReasoning = { enqueueDelta(asstMsg.id, it, reasoning = true) },
-                            onContent = { enqueueDelta(asstMsg.id, it, reasoning = false) },
-                            onSearchStatus = { status ->
-                                _webSearchStatus.value = status.ifBlank { null }
-                            }
-                        )
+
+                // 流式中断自动续写：带着已生成的内容重新请求，最多重试 2 次
+                val maxRetries = 2
+                var attempts = 0
+                var error: String? = null
+                while (true) {
+                    if (attempts > 0) {
+                        _retryNotice.value = "连接中断，正在自动续写…"
+                        delay(600)
                     }
-                    _webSearchStatus.value = null
-                    err
-                } else {
-                    withContext(Dispatchers.IO) {
-                        client.streamChat(
-                            DeepSeekClient.ChatRequest(
+                    val partial = _messages.value
+                        .firstOrNull { it.id == asstMsg.id }
+                        ?.content.orEmpty()
+                    val requestMessages = if (partial.isNotBlank()) {
+                        historyMessages.filterNot { it.second.isBlank() } +
+                            ("assistant" to partial)
+                    } else {
+                        historyMessages
+                    }
+                    val result = if (_webSearch.value) {
+                        _webSearchStatus.value = if (attempts == 0) {
+                            "正在联网搜索…"
+                        } else {
+                            "正在联网搜索…（续写）"
+                        }
+                        val r = withContext(Dispatchers.IO) {
+                            client.streamResponses(
                                 apiKey = _apiKey.value,
-                                model = _model.value,
-                                thinking = _thinking.value,
-                                reasoningEffort = _reasoningEffort.value,
-                                messages = historyMessages,
-                                systemPrompt = systemPrompt
-                            ),
-                            onReasoning = { enqueueDelta(asstMsg.id, it, reasoning = true) },
-                            onContent = { enqueueDelta(asstMsg.id, it, reasoning = false) }
-                        )
+                                instructions = systemPrompt,
+                                messages = requestMessages,
+                                webSearch = true,
+                                onReasoning = { enqueueDelta(asstMsg.id, it, reasoning = true) },
+                                onContent = { enqueueDelta(asstMsg.id, it, reasoning = false) },
+                                onSearchStatus = { status ->
+                                    _webSearchStatus.value = status.ifBlank { null }
+                                }
+                            )
+                        }
+                        _webSearchStatus.value = null
+                        r
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            client.streamChat(
+                                DeepSeekClient.ChatRequest(
+                                    apiKey = _apiKey.value,
+                                    model = _model.value,
+                                    thinking = _thinking.value,
+                                    reasoningEffort = _reasoningEffort.value,
+                                    messages = requestMessages,
+                                    systemPrompt = systemPrompt
+                                ),
+                                onReasoning = { enqueueDelta(asstMsg.id, it, reasoning = true) },
+                                onContent = { enqueueDelta(asstMsg.id, it, reasoning = false) }
+                            )
+                        }
+                    }
+                    when (result) {
+                        is StreamResult.Done -> {
+                            error = null
+                            break
+                        }
+                        is StreamResult.Failed -> {
+                            error = result.message
+                            break
+                        }
+                        is StreamResult.Interrupted -> {
+                            attempts++
+                            if (attempts > maxRetries) {
+                                error = "连接中断，自动续写 $maxRetries 次后仍失败，请重试"
+                                break
+                            }
+                        }
                     }
                 }
+                _retryNotice.value = null
+
                 // 等最后一波增量刷新到 UI
                 while (pendingContent.isNotEmpty() || pendingReasoning.isNotEmpty()) {
                     delay(30)
@@ -519,6 +594,7 @@ class AppViewModel(
         streamJob?.cancel()
         streamJob = null
         _isStreaming.value = false
+        _retryNotice.value = null
         val convId = _currentConvId.value ?: return
         val streamingMsg = _messages.value.firstOrNull { it.streaming }
         if (streamingMsg == null) return

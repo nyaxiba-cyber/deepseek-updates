@@ -7,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
 import kotlin.coroutines.resume
 
 data class UpdateInfo(
@@ -26,29 +25,6 @@ class UpdateManager {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
-
-    suspend fun check(updateUrl: String): Result<UpdateInfo> = withContext(Dispatchers.IO) {
-        try {
-            val req = Request.Builder().url(updateUrl).build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    return@withContext Result.failure(Exception("HTTP ${resp.code}"))
-                }
-                val body = resp.body?.string().orEmpty()
-                val json = JSONObject(body)
-                Result.success(
-                    UpdateInfo(
-                        versionCode = json.optInt("versionCode", 0),
-                        versionName = json.optString("versionName", ""),
-                        notes = json.optString("updateNotes", ""),
-                        downloadUrl = json.optString("downloadUrl", "")
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 
     suspend fun download(
         url: String,
