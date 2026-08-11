@@ -54,7 +54,7 @@ deepseek-android/
 ## 当前状态（2026-08-11）
 
 - APK：`app/build/outputs/apk/debug/app-debug.apk`（约 17MB，Android 8.0+）
-- 版本：v1.5（versionCode 6）
+- 版本：v1.13（versionCode 14）
 - 模型：`deepseek-v4-flash` / `deepseek-v4-pro`（2026 年 8 月官方最新阵容）
 - 深度思考：**默认关闭（纯 Chat 模式）**，输入栏开关默认关；需要时可手动开
 - API Key：**不内置在 APK**。首次打开后在设置页填写，保存到 App 本地配置文件
@@ -70,6 +70,12 @@ deepseek-android/
 - 反馈：侧栏「反馈」→ 填写问题 + 可选截图 → 自动打包（日志/设备信息/反馈文字/截图
   成 zip）→ 系统分享发送
 - 更新弹窗：检查更新时弹窗列出「本次更新内容」，逐条展示
+- 更新加速：更新清单走 GitHub raw（实时），APK 走 jsDelivr CDN（国内加速）
+- 语音按钮自适应：设备不支持语音识别时自动隐藏麦克风按钮
+- 深浅色模式：跟随系统 / 浅色 / 深色 手动切换
+- 进程恢复：App 被系统杀掉后重启，回到原会话
+- 流式：官方 okhttp-sse 库 + ChatGPT 式打字机动画 + Markdown 成熟库渲染
+- 安全：API Key 用 Android Keystore AES-GCM 加密存储
 
 ## 记忆功能（2026-08-11 新增）
 
@@ -132,6 +138,16 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 到 GitHub Releases 并创建 v{版本号} Release（幂等，可重跑）。
 
 局域网发布脚本（备用，无需 GitHub）：`scripts\publish.ps1 -StartServer`
+
+### GitHub Actions 自动发布（v1.13 新增）
+
+源码已托管到 `nyaxiba-cyber/deepseek-updates` 仓库（公开）。两种触发方式：
+
+1. **打 tag**：`git tag v1.14 && git push origin v1.14` → 云端自动构建、创建
+   Release、更新 CDN 文件
+2. **手动触发**：`gh workflow run "Build & Release" --repo nyaxiba-cyber/deepseek-updates -f notes="更新说明"`
+
+云端构建完成后，手机点「检查更新」即可从 jsDelivr CDN 下载安装。
 
 ### 手机端更新
 
