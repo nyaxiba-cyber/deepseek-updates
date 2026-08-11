@@ -20,6 +20,7 @@ import com.deepseek.personal.data.HistoryStore
 import com.deepseek.personal.data.LogCollector
 import com.deepseek.personal.data.Memory
 import com.deepseek.personal.data.ModelInfo
+import com.deepseek.personal.data.PgyerUpdater
 import com.deepseek.personal.data.SettingsStore
 import com.deepseek.personal.data.UpdateInfo
 import com.deepseek.personal.data.UpdateManager
@@ -56,6 +57,7 @@ class AppViewModel(
     private val settings = SettingsStore(app)
     private val client = DeepSeekClient()
     private val updateManager = UpdateManager()
+    private val pgyerUpdater = PgyerUpdater()
     private val idGen = AtomicLong(System.currentTimeMillis())
     private val vibrator = app.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
 
@@ -539,10 +541,13 @@ class AppViewModel(
         if (_checkingUpdate.value || _downloading.value) return
         viewModelScope.launch {
             _checkingUpdate.value = true
-            val result = updateManager.check(BuildConfig.UPDATE_URL_DEFAULT)
+            val result = pgyerUpdater.check(
+                BuildConfig.PGYER_API_KEY,
+                BuildConfig.PGYER_APP_KEY
+            )
             _checkingUpdate.value = false
             result.onSuccess { info ->
-                if (info.versionCode > BuildConfig.VERSION_CODE) {
+                if (info.versionCode > BuildConfig.VERSION_CODE && info.downloadUrl.isNotBlank()) {
                     _updateInfo.value = info
                 } else {
                     showUpdateMessage("当前已是最新版本（v${BuildConfig.VERSION_NAME}）")
