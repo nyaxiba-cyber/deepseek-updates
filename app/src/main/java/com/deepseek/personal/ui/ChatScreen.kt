@@ -286,21 +286,22 @@ private fun MessageList(
 ) {
     val listState = rememberLazyListState()
     var autoFollow by remember { mutableStateOf(true) }
+    var userScrolling by remember { mutableStateOf(false) }
     var lastStreamProgress by remember { mutableIntStateOf(0) }
     val lastId = messages.lastOrNull()?.id
     val lastLen = messages.lastOrNull()?.content?.length
     val view = LocalView.current
     val scope = rememberCoroutineScope()
 
-    // 用户上翻历史时暂停自动跟随；回到底部附近后恢复跟随
+    // 用户上翻历史时暂停自动跟随；松手且回到底部附近后恢复跟随
     LaunchedEffect(Unit) {
-        // 通过 snapshotFlow 监控是否已贴近底部，贴近后恢复跟随
+        // 通过 snapshotFlow 监控是否已贴近底部；用户拖动中不恢复跟随
         snapshotFlow {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()
             lastVisible == null || lastVisible.index >= info.totalItemsCount - 2
         }.collect { atBottom ->
-            autoFollow = atBottom
+            if (!userScrolling) autoFollow = atBottom
         }
     }
 
@@ -314,10 +315,13 @@ private fun MessageList(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val startY = down.position.y
                     var dy = 0f
+                    userScrolling = true
+                    autoFollow = false
                     do {
                         val event = awaitPointerEvent()
                         dy += event.changes.firstOrNull()?.positionChange()?.y ?: 0f
                     } while (event.changes.any { it.pressed })
+                    userScrolling = false
                     val atTop = !listState.canScrollBackward
                     val atBottom = !listState.canScrollForward
                     val startInBottomArea = startY > size.height * 0.72f

@@ -2,14 +2,6 @@ package com.deepseek.personal.ui
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -68,53 +60,35 @@ fun MessageBubble(
             Spacer(Modifier.padding(end = 2.dp))
         }
         Column(
-            modifier = Modifier
-                .widthIn(max = 330.dp)
-                .animateContentSize(
-                    animationSpec = tween(160, easing = FastOutSlowInEasing)
-                )
+            modifier = Modifier.widthIn(max = 330.dp)
         ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(tween(220)) +
-                    slideInVertically(
-                        animationSpec = tween(220, easing = FastOutSlowInEasing)
-                    ) { it / 3 } +
-                    scaleIn(
-                        initialScale = 0.97f,
-                        animationSpec = tween(220, easing = FastOutSlowInEasing)
-                    ),
-                exit = fadeOut(tween(150)) +
-                    slideOutVertically(tween(150)) { it / 3 }
+            // 注意：这里不做 animateContentSize / 进入动画包装——
+            // 尺寸动画包裹 LazyColumn item 会导致滚动时布局抖动（富文本首帧测量+高度插值）。
+            if (msg.reasoning.isNotBlank()) {
+                ReasoningCard(msg.reasoning, msg.streaming)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            val bubbleColor = if (isUser) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceVariant
+            val textColor = if (isUser) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface
+
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 18.dp,
+                    topEnd = 18.dp,
+                    bottomStart = if (isUser) 18.dp else 4.dp,
+                    bottomEnd = if (isUser) 4.dp else 18.dp
+                ),
+                color = bubbleColor
             ) {
-                Column {
-                    if (msg.reasoning.isNotBlank()) {
-                        ReasoningCard(msg.reasoning, msg.streaming)
-                        Spacer(Modifier.height(8.dp))
-                    }
-
-                    val bubbleColor = if (isUser) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant
-                    val textColor = if (isUser) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface
-
-                    Surface(
-                        shape = RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
-                            bottomStart = if (isUser) 18.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 18.dp
-                        ),
-                        color = bubbleColor
-                    ) {
-                        BoxContent(
-                            msg = msg,
-                            textColor = textColor,
-                            isDark = isDark,
-                            onProgress = onProgress
-                        )
-                    }
-                }
+                BoxContent(
+                    msg = msg,
+                    textColor = textColor,
+                    isDark = isDark,
+                    onProgress = onProgress
+                )
             }
         }
         if (isUser) {
