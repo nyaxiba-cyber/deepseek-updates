@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,11 +16,16 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.deepseek.personal.ui.theme.AppTheme
 import com.deepseek.personal.ui.theme.DeepSeekTheme
+import kotlinx.coroutines.delay
 
 @Composable
 fun AppRoot(vm: AppViewModel) {
@@ -68,6 +75,7 @@ private fun AppRootInner(vm: AppViewModel) {
     var showMemory by remember { mutableStateOf(false) }
     var showFeedback by remember { mutableStateOf(false) }
     var showTrash by remember { mutableStateOf(false) }
+    var trashNoticeVisible by remember { mutableStateOf(false) }
 
     val currentTitle = conversations.firstOrNull { it.id == currentId }?.title ?: "新对话"
 
@@ -176,6 +184,36 @@ private fun AppRootInner(vm: AppViewModel) {
                 )
             }
         }
+
+        // 删除会话后的轻量提示：右上角非阻塞浮层，不弹窗、不倒计时、可继续操作
+        LaunchedEffect(trashPending) {
+            if (trashPending != null) {
+                trashNoticeVisible = true
+                delay(3500)
+                trashNoticeVisible = false
+            }
+        }
+        AnimatedVisibility(
+            visible = trashNoticeVisible,
+            enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { -it },
+            exit = fadeOut(tween(200)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 68.dp, end = 12.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.inverseSurface,
+                shadowElevation = 4.dp
+            ) {
+                Text(
+                    "会话已移入回收站，5 分钟后自动彻底删除",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+        }
     }
 
     if (showSettings) {
@@ -208,11 +246,4 @@ private fun AppRootInner(vm: AppViewModel) {
         )
     }
 
-    trashPending?.let { pending ->
-        TrashCountdownOverlay(
-            pending = pending,
-            onRestore = { vm.restorePendingTrash() },
-            onDismiss = { vm.dismissTrashPending() }
-        )
-    }
 }

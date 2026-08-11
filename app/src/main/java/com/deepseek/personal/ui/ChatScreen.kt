@@ -2,6 +2,7 @@ package com.deepseek.personal.ui
 
 import android.content.Context
 import android.content.Intent
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -49,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -58,11 +60,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepseek.personal.data.ChatMessage
 import com.deepseek.personal.data.ModelInfo
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +88,6 @@ fun ChatScreen(
     val context = LocalContext.current
     var moreMenu by remember { mutableStateOf(false) }
     var renameDialog by remember { mutableStateOf(false) }
-    var deleteDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     val edgePx = with(LocalDensity.current) { 30.dp.toPx() }
 
@@ -159,7 +162,7 @@ fun ChatScreen(
                         DropdownMenuItem(
                             text = { Text("删除会话") },
                             onClick = {
-                                deleteDialog = true
+                                vm.currentConvId.value?.let { vm.deleteConversation(it) }
                                 moreMenu = false
                             }
                         )
@@ -272,24 +275,6 @@ fun ChatScreen(
         )
     }
 
-    if (deleteDialog) {
-        AlertDialog(
-            onDismissRequest = { deleteDialog = false },
-            title = { Text("删除会话？") },
-            text = { Text("删除后不可恢复。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.currentConvId.value?.let { vm.deleteConversation(it) }
-                    deleteDialog = false
-                }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteDialog = false }) { Text("取消") }
-            }
-        )
-    }
 }
 
 @Composable
@@ -304,8 +289,10 @@ private fun MessageList(
     var lastStreamProgress by remember { mutableIntStateOf(0) }
     val lastId = messages.lastOrNull()?.id
     val lastLen = messages.lastOrNull()?.content?.length
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
 
-    // 用户手势：手指下滑（查看上方历史）时暂停自动跟随
+    // 用户上翻历史时暂停自动跟随；回到底部附近后恢复跟随
     LaunchedEffect(Unit) {
         // 通过 snapshotFlow 监控是否已贴近底部，贴近后恢复跟随
         snapshotFlow {
@@ -313,7 +300,7 @@ private fun MessageList(
             val lastVisible = info.visibleItemsInfo.lastOrNull()
             lastVisible == null || lastVisible.index >= info.totalItemsCount - 2
         }.collect { atBottom ->
-            if (atBottom) autoFollow = true
+            autoFollow = atBottom
         }
     }
 
@@ -324,14 +311,33 @@ private fun MessageList(
             .background(MaterialTheme.colorScheme.background)
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startY = down.position.y
                     var dy = 0f
                     do {
                         val event = awaitPointerEvent()
                         dy += event.changes.firstOrNull()?.positionChange()?.y ?: 0f
                     } while (event.changes.any { it.pressed })
-                    if (dy > 150f && !listState.canScrollForward) {
-                        onNewConversation()
+                    val atTop = !listState.canScrollBackward
+                    val atBottom = !listState.canScrollForward
+                    val startInBottomArea = startY > size.height * 0.72f
+                    when {
+                        // 消息列表底部下拉（手势从屏幕下方区域开始）：新建对话
+                        atBottom && startInBottomArea && dy > 150f -> {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            onNewConversation()
+                        }
+                        // 消息列表顶部下拉（已上翻历史时）：平滑滚回最新消息（Telegram 式跳转）
+                        atTop && !atBottom && dy > 120f -> {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            autoFollow = true
+                            val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                            if (lastIndex >= 0) {
+                                scope.launch {
+                                    listState.animateScrollToItem(lastIndex)
+                                }
+                            }
+                        }
                     }
                 }
             },

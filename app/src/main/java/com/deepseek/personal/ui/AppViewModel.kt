@@ -243,10 +243,6 @@ class AppViewModel(
         }
     }
 
-    fun restorePendingTrash() {
-        _trashPending.value?.conversationId?.let { restoreConversation(it) }
-    }
-
     fun restoreConversation(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             history.restoreConversation(id)
@@ -258,10 +254,6 @@ class AppViewModel(
             _currentConvId.value = id
             _messages.value = history.loadMessages(id)
         }
-    }
-
-    fun dismissTrashPending() {
-        _trashPending.value = null
     }
 
     fun deleteTrashImmediately(id: Long) {
