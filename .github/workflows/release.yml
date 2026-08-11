@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Release notes'
+        required: false
 
 permissions:
   contents: write
@@ -41,22 +45,25 @@ jobs:
           else
             TAG="${GITHUB_REF_NAME}"
           fi
+          VERSION="${TAG#v}"
           echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
-          NOTES=$(gh api "repos/${{ github.repository }}/releases" --jq '.[0].body' 2>/dev/null || echo "Auto release")
+          NOTES="${{ github.event.inputs.notes }}"
+          if [[ -z "$NOTES" ]]; then NOTES="Auto release"; fi
           mkdir -p publish
-          cp app/build/outputs/apk/debug/app-debug.apk "publish/app-debug-v${TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "publish/app-debug-v${VERSION}.apk"
           cat > publish/version.json <<EOF
           {
             "versionCode": ${VERSION_CODE},
-            "versionName": "${TAG}",
+            "versionName": "${VERSION}",
             "updateNotes": "${NOTES}",
-            "downloadUrl": "https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/publish/app-debug-v${TAG}.apk",
+            "downloadUrl": "https://cdn.jsdelivr.net/gh/${{ github.repository }}@main/publish/app-debug-v${VERSION}.apk",
             "force": false
           }
           EOF
           # 清理旧版 APK（保留最新）
-          ls publish/app-debug-v*.apk | grep -v "v${TAG}.apk" | xargs -r rm -f
+          ls publish/app-debug-v*.apk | grep -v "v${VERSION}.apk" | xargs -r rm -f
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
