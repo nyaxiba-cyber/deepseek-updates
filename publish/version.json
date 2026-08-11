@@ -1,7 +1,7 @@
 {
   "versionCode": 16,
   "versionName": "1.15",
-    "updateNotes": "v1.15：删除会话不再弹窗，改为右上角轻量提示；新增四向手势（顶部下拉回到最新、底部下拉新建对话、边缘横滑切换会话/侧栏）",
+  "updateNotes": "v1.15：删除会话不再弹窗，改为右上角轻量提示；新增四向手势（顶部下拉回到最新、底部下拉新建对话、边缘横滑切换会话/侧栏）",
   "downloadUrl": "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-v1.15.apk",
   "force": false
 }
