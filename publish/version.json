@@ -1,7 +1,7 @@
 {
-  "versionCode": 14,
-  "versionName": "1.13",
-  "updateNotes": "v1.13: 全面优化版",
-  "downloadUrl": "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-v1.13.apk",
+  "versionCode": 15,
+  "versionName": "1.14",
+  "updateNotes": "v1.14: typewriter smooth follow + theme color fixes",
+  "downloadUrl": "https://cdn.jsdelivr.net/gh/nyaxiba-cyber/deepseek-updates@main/publish/app-debug-v1.14.apk",
   "force": false
 }
