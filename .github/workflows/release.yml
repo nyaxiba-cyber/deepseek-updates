@@ -63,7 +63,7 @@ jobs:
           }
           EOF
           # 清理旧版 APK（保留最新）
-          ls publish/app-debug-v*.apk | grep -v "v${VERSION}.apk" | xargs -r rm -f
+          ls publish/app-debug-v*.apk | grep -v "app-debug-v${VERSION}.apk$" | xargs -r rm -f
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
