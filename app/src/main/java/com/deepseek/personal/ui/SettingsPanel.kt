@@ -1,18 +1,20 @@
 package com.deepseek.personal.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,8 +23,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,21 +65,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import com.deepseek.personal.BuildConfig
 import com.deepseek.personal.data.DeviceProfile
 import com.deepseek.personal.data.ModelInfo
 import com.deepseek.personal.ui.theme.AppTheme
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 private enum class SettingsPage {
     HOME, API_KEY, MODEL, THEME, INTERACTION, UPDATE, MODEL_DETAIL, DEVICE
@@ -97,13 +108,12 @@ fun SettingsPanel(
     vm: AppViewModel,
     onDismiss: () -> Unit
 ) {
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .clickable { onDismiss() }
-        )
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        var dragProgress by remember { mutableStateOf(0f) }
+        val setDragProgress = remember { { v: Float -> dragProgress = v } }
+
+        Scrim(dragProgress = dragProgress, onDismiss = onDismiss)
+
         AnimatedVisibility(
             visible = true,
             enter = slideInHorizontally(
@@ -120,64 +130,156 @@ fun SettingsPanel(
                 color = MaterialTheme.colorScheme.background,
                 modifier = Modifier.fillMaxSize()
             ) {
-                SettingsNavigator(vm, onDismiss)
+                // 状态栏避让：返回按钮不再顶进状态栏区域
+                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                    SettingsNavigator(
+                        vm = vm,
+                        onClose = onDismiss,
+                        onDragProgress = setDragProgress
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
+private fun Scrim(
+    dragProgress: Float,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Color.Black.copy(alpha = 0.45f * (1f - dragProgress.coerceIn(0f, 1f)))
+            )
+            .clickable { onDismiss() }
+    )
+}
+
+@Composable
 private fun SettingsNavigator(
     vm: AppViewModel,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onDragProgress: (Float) -> Unit
 ) {
     val stack = remember { mutableStateListOf(SettingsPage.HOME) }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val maxDrag = with(density) { (maxWidth * 0.92f).toPx() }
+
         stack.forEachIndexed { index, page ->
             val isTop = index == stack.lastIndex
+            var pageDrag by remember(page) { mutableStateOf(0f) }
+            val currentDrag by rememberUpdatedState(pageDrag)
+
             AnimatedVisibility(
                 visible = isTop,
                 enter = slideInHorizontally(
                     animationSpec = tween(280, easing = FastOutSlowInEasing)
                 ) { it },
-                exit = slideOutHorizontally(tween(220)) { it },
+                exit = fadeOut(tween(160)),
                 modifier = Modifier.fillMaxSize()
             ) {
-                when (page) {
-                    SettingsPage.HOME -> HomePage(
-                        onPush = { stack.add(it) },
-                        onClose = onClose,
-                        vm = vm
-                    )
-                    SettingsPage.API_KEY -> ApiKeyPage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
-                    SettingsPage.MODEL -> ModelPage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) },
-                        onDetail = { stack.add(SettingsPage.MODEL_DETAIL) }
-                    )
-                    SettingsPage.THEME -> ThemePage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
-                    SettingsPage.INTERACTION -> InteractionPage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
-                    SettingsPage.UPDATE -> UpdatePage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
-                    SettingsPage.MODEL_DETAIL -> ModelDetailPage(
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
-                    SettingsPage.DEVICE -> DevicePage(
-                        vm = vm,
-                        onBack = { stack.removeAt(stack.lastIndex) }
-                    )
+                val pageContent: @Composable () -> Unit = {
+                    when (page) {
+                        SettingsPage.HOME -> HomePage(
+                            onPush = { stack.add(it) },
+                            onClose = onClose,
+                            vm = vm
+                        )
+                        SettingsPage.API_KEY -> ApiKeyPage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                        SettingsPage.MODEL -> ModelPage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) },
+                            onDetail = { stack.add(SettingsPage.MODEL_DETAIL) }
+                        )
+                        SettingsPage.THEME -> ThemePage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                        SettingsPage.INTERACTION -> InteractionPage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                        SettingsPage.UPDATE -> UpdatePage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                        SettingsPage.MODEL_DETAIL -> ModelDetailPage(
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                        SettingsPage.DEVICE -> DevicePage(
+                            vm = vm,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                    }
+                }
+
+                if (isTop) {
+                    // 顶层页面：整卡跟手右滑返回（首页滑出 = 关闭面板）
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset { IntOffset(pageDrag.roundToInt(), 0) }
+                            .pointerInput(page) {
+                                detectHorizontalDragGestures(
+                                    onHorizontalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        pageDrag = (currentDrag + dragAmount)
+                                            .coerceIn(0f, maxDrag)
+                                        onDragProgress(pageDrag / maxDrag)
+                                    },
+                                    onDragEnd = {
+                                        scope.launch {
+                                            if (currentDrag > maxDrag * 0.28f) {
+                                                animate(
+                                                    currentDrag,
+                                                    maxDrag,
+                                                    animationSpec = tween(
+                                                        220,
+                                                        easing = FastOutSlowInEasing
+                                                    )
+                                                ) { v, _ ->
+                                                    pageDrag = v
+                                                    onDragProgress(v / maxDrag)
+                                                }
+                                                onDragProgress(0f)
+                                                if (stack.size > 1) {
+                                                    stack.removeAt(stack.lastIndex)
+                                                } else {
+                                                    onClose()
+                                                }
+                                            } else {
+                                                animate(
+                                                    currentDrag,
+                                                    0f,
+                                                    animationSpec = tween(
+                                                        260,
+                                                        easing = FastOutSlowInEasing
+                                                    )
+                                                ) { v, _ ->
+                                                    pageDrag = v
+                                                    onDragProgress(v / maxDrag)
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                    ) {
+                        pageContent()
+                    }
+                } else {
+                    Box(Modifier.fillMaxSize()) {
+                        pageContent()
+                    }
                 }
             }
         }
