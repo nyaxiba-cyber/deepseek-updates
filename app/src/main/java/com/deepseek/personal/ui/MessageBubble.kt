@@ -48,7 +48,6 @@ import com.deepseek.personal.data.ChatMessage
 @Composable
 fun MessageBubble(
     msg: ChatMessage,
-    onProgress: ((Int) -> Unit)? = null,
     onDelete: (() -> Unit)? = null
 ) {
     val isUser = msg.role == "user"
@@ -99,8 +98,7 @@ fun MessageBubble(
                 BoxContent(
                     msg = msg,
                     textColor = textColor,
-                    isDark = isDark,
-                    onProgress = onProgress
+                    isDark = isDark
                 )
             }
         }
@@ -174,8 +172,7 @@ private fun MessageActions(
 private fun BoxContent(
     msg: ChatMessage,
     textColor: Color,
-    isDark: Boolean,
-    onProgress: ((Int) -> Unit)? = null
+    isDark: Boolean
 ) {
     Column(
         Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -183,20 +180,12 @@ private fun BoxContent(
         if (msg.content.isNotBlank()) {
             // 不做 SelectionContainer：它会在滚动时为每条消息维护选区状态，非常吃性能。
             // 复制走每条消息右上角「⋮」菜单里的「复制」。
-            if (msg.streaming) {
-                TypewriterText(
-                    fullText = msg.content,
-                    streaming = true,
-                    color = textColor,
-                    onProgress = onProgress
-                )
-            } else {
-                MarkdownText(
-                    text = msg.content,
-                    color = textColor,
-                    isDark = isDark
-                )
-            }
+            // 流式内容直接渲染（无逐字打字机动画），配合滚动跟随形成自然输出效果。
+            MarkdownText(
+                text = msg.content,
+                color = textColor,
+                isDark = isDark
+            )
         }
         if (msg.error != null) {
             Text(

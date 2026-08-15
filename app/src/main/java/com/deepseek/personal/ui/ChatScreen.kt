@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,6 +49,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -69,11 +73,11 @@ import com.deepseek.personal.data.ModelInfo
 import kotlinx.coroutines.launch
 
 // 手势阈值常量（统一调手感）
-private val EdgeSwipeDp = 30.dp
-private const val EdgeSwipeMinDx = 120f
+private val EdgeSwipeDp = 40.dp
+private val PullNewThresholdDp = 160.dp
+private const val EdgeSwipeMinDx = 90f
 private const val TopPullMinDy = 120f
-private const val BottomPullMinDy = 150f
-private const val BottomAreaRatio = 0.72f
+private const val DeleteSwipeThresholdRatio = 0.32f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -203,6 +207,9 @@ fun ChatScreen(
                 visibleCount = visibleCount,
                 onLoadMoreOlder = { vm.loadMoreOlder() },
                 onDeleteMessage = { vm.deleteMessage(it) },
+                onDeleteConversation = {
+                    vm.currentConvId.value?.let(vm::deleteConversation)
+                },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -317,13 +324,17 @@ private fun MessageList(
     visibleCount: Int,
     onLoadMoreOlder: () -> Unit,
     onDeleteMessage: (Long) -> Unit,
+    onDeleteConversation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
     var autoFollow by remember { mutableStateOf(true) }
     var userScrolling by remember { mutableStateOf(false) }
-    var lastStreamProgress by remember { mutableIntStateOf(0) }
+    var pullNewProgress by remember { mutableFloatStateOf(0f) }
+    var swipeDeleteProgress by remember { mutableFloatStateOf(0f) }
     val lastId = messages.lastOrNull()?.id
+    val lastContentLen = messages.lastOrNull()?.content?.length
     val visibleMessages = if (visibleCount >= messages.size) {
         messages
     } else {
@@ -331,6 +342,8 @@ private fun MessageList(
     }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
+    val pullNewThreshold = with(density) { PullNewThresholdDp.toPx() }
+    val edgePx = with(density) { EdgeSwipeDp.toPx() }
 
     // 用户上翻历史时暂停自动跟随；松手且回到底部附近后恢复跟随
     LaunchedEffect(Unit) {
@@ -344,60 +357,142 @@ private fun MessageList(
         }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val startY = down.position.y
-                    var dy = 0f
-                    userScrolling = true
-                    autoFollow = false
-                    do {
-                        val event = awaitPointerEvent()
-                        dy += event.changes.firstOrNull()?.positionChange()?.y ?: 0f
-                    } while (event.changes.any { it.pressed })
-                    userScrolling = false
-                    val atTop = !listState.canScrollBackward
-                    val atBottom = !listState.canScrollForward
-                    val startInBottomArea = startY > size.height * BottomAreaRatio
-                    when {
-                        // 消息列表底部下拉（手势从屏幕下方区域开始）：新建对话
-                        atBottom && startInBottomArea && dy > BottomPullMinDy -> {
-                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            onNewConversation()
-                        }
-                        // 消息列表顶部下拉（已上翻历史时）：平滑滚回最新消息（Telegram 式跳转）
-                        atTop && !atBottom && dy > TopPullMinDy -> {
-                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            autoFollow = true
-                            val lastIndex = listState.layoutInfo.totalItemsCount - 1
-                            if (lastIndex >= 0) {
-                                scope.launch {
-                                    listState.animateScrollToItem(lastIndex)
+    Box(modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startX = down.position.x
+                        val atBottomStart = !listState.canScrollForward
+                        var dx = 0f
+                        var dy = 0f
+                        userScrolling = true
+                        autoFollow = false
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull()
+                            dx += change?.positionChange()?.x ?: 0f
+                            dy += change?.positionChange()?.y ?: 0f
+                            // 列表拖不动（已在底部）时下拉：新建对话进度条，拖满才触发
+                            if (atBottomStart && dy > 0f) {
+                                pullNewProgress = (dy / pullNewThreshold).coerceIn(0f, 1f)
+                            }
+                            // 非左缘区域向右拖：删除会话进度条，拖满才触发
+                            if (startX > edgePx && dx > 0f) {
+                                swipeDeleteProgress =
+                                    (dx / (size.width * DeleteSwipeThresholdRatio))
+                                        .coerceIn(0f, 1f)
+                            }
+                        } while (event.changes.any { it.pressed })
+                        userScrolling = false
+                        val atTop = !listState.canScrollBackward
+                        val atBottom = !listState.canScrollForward
+                        when {
+                            pullNewProgress >= 1f -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                onNewConversation()
+                            }
+                            swipeDeleteProgress >= 1f -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                onDeleteConversation()
+                            }
+                            // 消息列表顶部下拉（已上翻历史时）：平滑滚回最新消息
+                            atTop && !atBottom && dy > TopPullMinDy -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                autoFollow = true
+                                val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                                if (lastIndex >= 0) {
+                                    scope.launch {
+                                        listState.animateScrollToItem(lastIndex)
+                                    }
                                 }
                             }
                         }
+                        pullNewProgress = 0f
+                        swipeDeleteProgress = 0f
                     }
+                },
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            items(
+                visibleMessages,
+                key = { it.id },
+                contentType = { it.role }
+            ) { msg ->
+                MessageBubble(
+                    msg = msg,
+                    onDelete = { onDeleteMessage(msg.id) }
+                )
+            }
+        }
+
+        // 下拉新建对话进度条（顶部）
+        if (pullNewProgress > 0f) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp)
+            ) {
+                Text(
+                    "新建对话 ${(pullNewProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    Modifier
+                        .width(160.dp)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(pullNewProgress)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
                 }
-            },
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        items(
-            visibleMessages,
-            key = { it.id },
-            contentType = { it.role }
-        ) { msg ->
-            val isLastStreaming = msg.streaming && msg.id == messages.lastOrNull()?.id
-            MessageBubble(
-                msg = msg,
-                onProgress = if (isLastStreaming) { p -> lastStreamProgress = p } else null,
-                onDelete = { onDeleteMessage(msg.id) }
-            )
+            }
+        }
+
+        // 右滑删除会话进度条（右侧）
+        if (swipeDeleteProgress > 0f) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 10.dp)
+            ) {
+                Text(
+                    "删除 ${(swipeDeleteProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    Modifier
+                        .width(6.dp)
+                        .height(140.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(swipeDeleteProgress)
+                            .background(MaterialTheme.colorScheme.error)
+                    )
+                }
+            }
         }
     }
 
@@ -412,21 +507,23 @@ private fun MessageList(
         }
     }
 
-    // 平滑跟随流式输出
+    // 新消息加入：发送时强制滚到底，其余情况按自动跟随
     LaunchedEffect(lastId) {
-        if (autoFollow && visibleMessages.isNotEmpty()) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
+        if (visibleMessages.isNotEmpty()) {
+            val justSent = messages.lastOrNull()?.streaming == true &&
+                messages.getOrNull(messages.size - 2)?.role == "user"
+            if (justSent) {
+                listState.animateScrollToItem(visibleMessages.lastIndex)
+            } else if (autoFollow) {
+                listState.scrollToItem(visibleMessages.lastIndex)
+            }
         }
     }
 
-    // 打字机进度驱动滚动：窗口跟随"已显示的字"平滑下移，不跳变
-    LaunchedEffect(lastStreamProgress, isStreaming) {
+    // 流式内容增长：窗口跟随内容下移（用户上滑历史时暂停）
+    LaunchedEffect(lastContentLen) {
         if (autoFollow && isStreaming && visibleMessages.isNotEmpty()) {
-            val info = listState.layoutInfo
-            val lastVisible = info.visibleItemsInfo.lastOrNull()
-            if (lastVisible == null || lastVisible.index < visibleMessages.lastIndex) {
-                listState.scrollToItem(visibleMessages.lastIndex)
-            }
+            listState.scrollToItem(visibleMessages.lastIndex)
         }
     }
 }

@@ -63,6 +63,7 @@ class DeepSeekClient {
         val factory = EventSources.createFactory(client)
         val resumed = java.util.concurrent.atomic.AtomicBoolean(false)
         var completed = false
+        var hasContent = false
         val es = factory.newEventSource(httpReq, object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -84,7 +85,10 @@ class DeepSeekClient {
                     val rc = delta.optString("reasoning_content", "")
                     val c = delta.optString("content", "")
                     if (rc.isNotEmpty()) onReasoning(rc)
-                    if (c.isNotEmpty()) onContent(c)
+                    if (c.isNotEmpty()) {
+                        hasContent = true
+                        onContent(c)
+                    }
                 } catch (_: Exception) {
                 }
             }
@@ -110,7 +114,13 @@ class DeepSeekClient {
                 } else {
                     "网络错误：${t?.message ?: "连接失败"}"
                 }
-                if (resumed.compareAndSet(false, true)) cont.resume(StreamResult.Failed(err))
+                if (resumed.compareAndSet(false, true)) {
+                    // 已收到部分内容后断线：视为可重试中断（自动续写），而不是最终失败
+                    cont.resume(
+                        if (hasContent) StreamResult.Interrupted(err)
+                        else StreamResult.Failed(err)
+                    )
+                }
             }
         })
         cont.invokeOnCancellation { es.cancel() }
@@ -156,6 +166,7 @@ class DeepSeekClient {
         val factory = EventSources.createFactory(client)
         val resumed = java.util.concurrent.atomic.AtomicBoolean(false)
         var completed = false
+        var hasContent = false
         val es = factory.newEventSource(httpReq, object : EventSourceListener() {
             override fun onEvent(
                 eventSource: EventSource,
@@ -169,7 +180,12 @@ class DeepSeekClient {
                     val evt = json.optString("type", "")
                     when (evt) {
                         "response.output_text.delta" -> {
-                            json.optString("delta", "").takeIf { it.isNotEmpty() }?.let(onContent)
+                            json.optString("delta", "")
+                                .takeIf { it.isNotEmpty() }
+                                ?.let {
+                                    hasContent = true
+                                    onContent(it)
+                                }
                         }
                         "response.reasoning_text.delta" -> {
                             json.optString("delta", "").takeIf { it.isNotEmpty() }?.let(onReasoning)
@@ -215,7 +231,12 @@ class DeepSeekClient {
                 } else {
                     "网络错误：${t?.message ?: "连接失败"}"
                 }
-                if (resumed.compareAndSet(false, true)) cont.resume(StreamResult.Failed(err))
+                if (resumed.compareAndSet(false, true)) {
+                    cont.resume(
+                        if (hasContent) StreamResult.Interrupted(err)
+                        else StreamResult.Failed(err)
+                    )
+                }
             }
         })
         cont.invokeOnCancellation { es.cancel() }
