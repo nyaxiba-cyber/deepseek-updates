@@ -50,7 +50,7 @@ object CryptoManager {
     }
 
     fun decrypt(stored: String): String {
-        if (!stored.startsWith(PREFIX)) return stored // 旧明文数据，直接迁移
+        if (!isEncrypted(stored)) return stored // 旧明文数据，读取后由 SettingsStore 迁移
         val parts = stored.removePrefix(PREFIX).split(":")
         if (parts.size != 2) return ""
         return try {
@@ -63,4 +63,6 @@ object CryptoManager {
             "" // 解密失败（密钥丢失/数据损坏）：返回空，提示重新填写
         }
     }
+
+    fun isEncrypted(stored: String): Boolean = stored.startsWith(PREFIX)
 }

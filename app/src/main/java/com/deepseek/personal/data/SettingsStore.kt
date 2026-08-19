@@ -7,12 +7,21 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "deepseek_settings")
 
 class SettingsStore(private val context: Context) {
+
+    /** 旧版本明文 Key 迁移为 AES-GCM 密文（读一次旧值→加密写回）。 */
+    suspend fun migrateLegacyKeyIfNeeded() {
+        val stored = context.dataStore.data.first()[KEY_API_KEY].orEmpty()
+        if (stored.isNotEmpty() && !CryptoManager.isEncrypted(stored)) {
+            context.dataStore.edit { it[KEY_API_KEY] = CryptoManager.encrypt(stored) }
+        }
+    }
 
     val apiKey: Flow<String> = context.dataStore.data.map {
         val stored = it[KEY_API_KEY].orEmpty()

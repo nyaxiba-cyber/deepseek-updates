@@ -154,6 +154,9 @@ class AppViewModel(
     private var flushJob: Job? = null
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            settings.migrateLegacyKeyIfNeeded()
+        }
         viewModelScope.launch { settings.apiKey.collect { _apiKey.value = it } }
         viewModelScope.launch { settings.model.collect { _model.value = it } }
         viewModelScope.launch { settings.thinking.collect { _thinking.value = it } }

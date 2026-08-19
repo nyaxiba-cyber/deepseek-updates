@@ -79,6 +79,11 @@ private fun AppRootInner(vm: AppViewModel) {
     var showTrash by remember { mutableStateOf(false) }
     var trashNoticeVisible by remember { mutableStateOf(false) }
 
+    // 主对话页手势激活条件：没有任何覆盖层（侧栏/设置/记忆/反馈/回收站）打开。
+    // 激活时把左右边缘 40dp 排除出系统返回手势，让「左缘右滑开侧栏/右缘左滑上一会话」生效。
+    val chatGesturesActive =
+        !sidebarVisible && !showSettings && !showMemory && !showFeedback && !showTrash
+
     val currentTitle = conversations.firstOrNull { it.id == currentId }?.title ?: "新对话"
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -118,6 +123,7 @@ private fun AppRootInner(vm: AppViewModel) {
                 retryNotice = retryNotice,
                 visibleCount = visibleCount,
                 showMenu = !wide,
+                gesturesActive = chatGesturesActive,
                 onMenuClick = { sidebarVisible = true },
                 modifier = Modifier.weight(1f)
             )

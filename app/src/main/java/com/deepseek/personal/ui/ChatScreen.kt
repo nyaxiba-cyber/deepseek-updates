@@ -2,6 +2,7 @@ package com.deepseek.personal.ui
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -29,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -50,7 +52,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +60,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -95,6 +97,7 @@ fun ChatScreen(
     retryNotice: String?,
     visibleCount: Int,
     showMenu: Boolean,
+    gesturesActive: Boolean = true,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,6 +110,24 @@ fun ChatScreen(
     Column(
         modifier
             .fillMaxSize()
+            .then(
+                if (gesturesActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Modifier
+                        .systemGestureExclusion { coords ->
+                            Rect(0f, 0f, edgePx, coords.size.height.toFloat())
+                        }
+                        .systemGestureExclusion { coords ->
+                            Rect(
+                                coords.size.width.toFloat() - edgePx,
+                                0f,
+                                coords.size.width.toFloat(),
+                                coords.size.height.toFloat()
+                            )
+                        }
+                } else {
+                    Modifier
+                }
+            )
             .background(MaterialTheme.colorScheme.background)
             .pointerInput(Unit) {
                 awaitEachGesture {

@@ -12,8 +12,8 @@ android {
         applicationId = "com.deepseek.personal"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "1.22"
+versionCode = 24
+versionName = "1.23"
 
         // API Key 不内置进 APK：首次打开后由用户在设置页填写，
         // 保存在 App 本地配置文件（DataStore），更新安装时不会被删除。
